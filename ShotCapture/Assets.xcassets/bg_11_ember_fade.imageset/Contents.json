@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "bg_11_ember_fade.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

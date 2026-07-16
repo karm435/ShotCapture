@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "bg_19_paper_warm.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
