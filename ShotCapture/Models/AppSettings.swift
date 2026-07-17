@@ -24,6 +24,8 @@ final class AppSettings {
         static let screenshotTransform = "screenshotTransform"
         static let titleTransform = "titleTransform"
         static let deviceFrameStyle = "deviceFrameStyle"
+        static let productBezelDevice = "productBezelDevice"
+        static let productBezelFinish = "productBezelFinish"
         static let importedBezelInset = "importedBezelInset"
         static let titleEnabled = "titleEnabled"
         static let titleText = "titleText"
@@ -74,6 +76,19 @@ final class AppSettings {
 
     var deviceFrameStyle: DeviceFrameStyle {
         didSet { UserDefaults.standard.set(deviceFrameStyle.rawValue, forKey: Keys.deviceFrameStyle) }
+    }
+
+    var productBezelDevice: ProductBezelDevice {
+        didSet {
+            UserDefaults.standard.set(productBezelDevice.rawValue, forKey: Keys.productBezelDevice)
+            if !productBezelDevice.finishes.contains(productBezelFinish) {
+                productBezelFinish = productBezelDevice.defaultFinish
+            }
+        }
+    }
+
+    var productBezelFinish: String {
+        didSet { UserDefaults.standard.set(productBezelFinish, forKey: Keys.productBezelFinish) }
     }
 
     /// Symmetric screen inset used to align a screenshot below an imported transparent bezel.
@@ -152,8 +167,18 @@ final class AppSettings {
             CanvasElementTransform.self,
             forKey: Keys.titleTransform
         ) ?? .titleDefault
-        deviceFrameStyle = defaults.string(forKey: Keys.deviceFrameStyle)
-            .flatMap(DeviceFrameStyle.init(rawValue:)) ?? .genericPhone
+        let storedFrameStyle = defaults.string(forKey: Keys.deviceFrameStyle)
+            .flatMap(DeviceFrameStyle.init(rawValue:)) ?? .appleProductBezel
+        deviceFrameStyle = storedFrameStyle == .appleProductBezel
+            && !ProductBezelDevice.bundledResourcesAvailable
+            ? .genericPhone
+            : storedFrameStyle
+        let storedDevice = defaults.string(forKey: Keys.productBezelDevice)
+            .flatMap(ProductBezelDevice.init(rawValue:)) ?? .iPhone17
+        productBezelDevice = storedDevice
+        let storedFinish = defaults.string(forKey: Keys.productBezelFinish)
+        productBezelFinish = storedFinish.flatMap { storedDevice.finishes.contains($0) ? $0 : nil }
+            ?? storedDevice.defaultFinish
         importedBezelInset = defaults.object(forKey: Keys.importedBezelInset) as? Double ?? 0.055
         titleEnabled = defaults.object(forKey: Keys.titleEnabled) as? Bool ?? false
         titleText = defaults.string(forKey: Keys.titleText) ?? "Your app, beautifully presented"

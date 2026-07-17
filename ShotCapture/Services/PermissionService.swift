@@ -33,12 +33,12 @@ enum PermissionService {
         """
         ShotCapture requirements:
 
-        1. Xcode and its command-line tools.
+        1. Select Xcode once so the App Sandbox can access simctl.
         2. A booted iOS Simulator.
         3. Accessibility — optional; only for the global keyboard shortcut.
 
         Screenshots use xcrun simctl and do not require Screen Recording access.
-        App Sandbox is disabled because simctl is external Xcode tooling.
+        Xcode access is stored as a security-scoped bookmark.
         """
     }
 }

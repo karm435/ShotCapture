@@ -39,6 +39,29 @@ struct SettingsView: View {
                     }
 
                     Section("Simulator") {
+                        LabeledContent("Xcode access") {
+                            Text(app.xcodeAccess.hasAccess ? "Granted" : "Required")
+                                .foregroundStyle(app.xcodeAccess.hasAccess ? .green : .orange)
+                        }
+
+                        Text(app.xcodeAccess.displayPath)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+
+                        Button(app.xcodeAccess.hasAccess ? "Choose Different Xcode…" : "Choose Xcode…") {
+                            if app.xcodeAccess.chooseXcode() {
+                                Task { await app.refreshDevices() }
+                            }
+                        }
+
+                        if let error = app.xcodeAccess.lastError {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+
                         if app.bootedDevices.isEmpty {
                             Text("No booted simulators")
                                 .foregroundStyle(.secondary)

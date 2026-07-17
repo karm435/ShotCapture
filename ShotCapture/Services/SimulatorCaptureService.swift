@@ -37,10 +37,13 @@ enum SimulatorCaptureError: LocalizedError {
 }
 
 actor SimulatorCaptureService {
-    func listBootedDevices() async throws -> [SimulatorDevice] {
+    func listBootedDevices(developerDirectory: URL) async throws -> [SimulatorDevice] {
         let result: CommandResult
         do {
-            result = try Self.runSimctl(["list", "devices", "booted", "--json"])
+            result = try Self.runSimctl(
+                ["list", "devices", "booted", "--json"],
+                developerDirectory: developerDirectory
+            )
         } catch {
             throw SimulatorCaptureError.simctlFailed(error.localizedDescription)
         }
@@ -73,8 +76,8 @@ actor SimulatorCaptureService {
         }
     }
 
-    func captureScreenshot(udid: String?) async throws -> NSImage {
-        let devices = try await listBootedDevices()
+    func captureScreenshot(udid: String?, developerDirectory: URL) async throws -> NSImage {
+        let devices = try await listBootedDevices(developerDirectory: developerDirectory)
         guard !devices.isEmpty else { throw SimulatorCaptureError.noBootedSimulator }
 
         let targetUDID: String
@@ -90,13 +93,16 @@ actor SimulatorCaptureService {
 
         let result: CommandResult
         do {
-            result = try Self.runSimctl([
-                "io",
-                targetUDID,
-                "screenshot",
-                "--type=png",
-                destination.path(),
-            ])
+            result = try Self.runSimctl(
+                [
+                    "io",
+                    targetUDID,
+                    "screenshot",
+                    "--type=png",
+                    destination.path(),
+                ],
+                developerDirectory: developerDirectory
+            )
         } catch {
             throw SimulatorCaptureError.captureFailed(error.localizedDescription)
         }
@@ -122,12 +128,18 @@ actor SimulatorCaptureService {
         return "\(platform) \(parts.dropFirst().joined(separator: "."))"
     }
 
-    private static func runSimctl(_ arguments: [String]) throws -> CommandResult {
+    private static func runSimctl(
+        _ arguments: [String],
+        developerDirectory: URL
+    ) throws -> CommandResult {
         let process = Process()
         let standardOutput = Pipe()
         let standardError = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         process.arguments = ["simctl"] + arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["DEVELOPER_DIR"] = developerDirectory.path(percentEncoded: false)
+        process.environment = environment
         process.standardOutput = standardOutput
         process.standardError = standardError
 

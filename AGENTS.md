@@ -2,7 +2,9 @@
 
 ## Project Structure & Module Organization
 
-`ShotCapture/` contains the macOS application. Keep domain values in `Models/`, system and capture behavior in `Services/`, and SwiftUI presentation in `Views/`. `ShotCaptureApp.swift` owns application startup and the AppKit menu-bar integration. Add colors, icons, and background images to `ShotCapture/Assets.xcassets`; privacy purpose strings belong in `Configuration/ShotCapture-Info.plist`.
+`ShotCapture/` contains the macOS app. Keep domain values in `Models/`, capture behavior in `Services/`, and SwiftUI presentation in `Views/`. Add images to `ShotCapture/Assets.xcassets`; privacy strings belong in `Configuration/ShotCapture-Info.plist`.
+
+Canvas positions are normalized in `CanvasElementTransform`; preview gestures and PNG export must both use those values. Built-in Apple artwork lives in `ShotCapture/ProductBezels/`; keep filenames aligned with `ProductBezelDevice`.
 
 Unit tests live in `ShotCaptureTests/`; launch and interaction tests live in `ShotCaptureUITests/`. `Scripts/` contains app-icon utilities. `ShotCapture.xcodeproj` defines the Xcode project and `ShotCapture` scheme.
 
@@ -25,8 +27,8 @@ Use Swift Testing (`@Test`, `#expect`) for model and service tests. Use XCTest f
 
 ## Commit & Pull Request Guidelines
 
-History contains only an initial commit, so no established message convention exists. Use short, imperative subjects such as `Add custom gradient presets`. Keep commits focused and exclude generated artifacts such as `default.profraw` or user-specific Xcode data. Pull requests should explain behavior changes, list verification commands, link issues, and include screenshots or exported PNGs for visual changes. Call out permission or distribution changes explicitly; App Sandbox must remain disabled while capture depends on `simctl`.
+History does not establish a consistent message convention. Use short, imperative subjects such as `Add custom gradient presets`. Keep commits focused and exclude generated artifacts such as `default.profraw`. Pull requests should explain behavior changes, list verification commands, link issues, and include exported PNGs for visual changes. Call out permission or distribution changes; App Sandbox must remain disabled while capture depends on `simctl`.
 
 ## Agent-Specific Instructions
 
-Confirm existing code patterns and project settings before editing; do not assume conventions or capabilities. Preserve unrelated working-tree changes and keep changes scoped to the request.
+Confirm existing code patterns and project settings before editing; do not assume conventions or capabilities. Preserve unrelated working-tree changes and keep changes scoped to the request. Do not add tests unless the user explicitly requests them.
