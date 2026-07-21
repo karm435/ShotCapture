@@ -40,7 +40,7 @@ struct SettingsView: View {
 
                     Section("Simulator") {
                         LabeledContent("Xcode access") {
-                            Text(app.xcodeAccess.hasAccess ? "Granted" : "Required")
+                            Text(app.xcodeAccess.hasAccess ? "Granted" : "Not selected")
                                 .foregroundStyle(app.xcodeAccess.hasAccess ? .green : .orange)
                         }
 

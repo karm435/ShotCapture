@@ -18,6 +18,7 @@ struct CompositionRequest {
     let deviceFrameStyle: DeviceFrameStyle
     let productBezel: NSImage?
     let productBezelAperture: CGRect?
+    let productBezelScreenCornerRadiusRatio: Double
     let importedBezelInset: Double
     let deviceDepthRatio: Double
     let deviceEdgeTint: NSColor
@@ -42,6 +43,7 @@ struct CompositionRequest {
         deviceFrameStyle: DeviceFrameStyle = .genericPhone,
         productBezel: NSImage? = nil,
         productBezelAperture: CGRect? = nil,
+        productBezelScreenCornerRadiusRatio: Double = 0.105,
         importedBezelInset: Double = 0.055,
         deviceDepthRatio: Double = 0.11,
         deviceEdgeTint: NSColor = NSColor(calibratedWhite: 0.16, alpha: 1),
@@ -63,6 +65,7 @@ struct CompositionRequest {
         self.deviceFrameStyle = deviceFrameStyle
         self.productBezel = productBezel
         self.productBezelAperture = productBezelAperture
+        self.productBezelScreenCornerRadiusRatio = productBezelScreenCornerRadiusRatio
         self.importedBezelInset = importedBezelInset
         self.deviceDepthRatio = deviceDepthRatio
         self.deviceEdgeTint = deviceEdgeTint
@@ -182,6 +185,7 @@ enum CompositionService {
                     bezel,
                     screenshot: request.screenshot,
                     aperture: request.productBezelAperture,
+                    screenCornerRadiusRatio: CGFloat(request.productBezelScreenCornerRadiusRatio),
                     inset: CGFloat(request.importedBezelInset),
                     scale: 1,
                     maxSize: layerSize,
@@ -455,6 +459,7 @@ enum CompositionService {
         _ bezel: NSImage,
         screenshot: NSImage,
         aperture: CGRect?,
+        screenCornerRadiusRatio: CGFloat,
         inset: CGFloat,
         scale: CGFloat,
         maxSize: CGSize,
@@ -486,7 +491,8 @@ enum CompositionService {
                 dy: bezelRect.height * clampedInset
             )
         }
-        let screenCornerRadius = min(screenRect.width, screenRect.height) * 0.105
+        let clampedCornerRadiusRatio = min(max(screenCornerRadiusRatio, 0), 0.25)
+        let screenCornerRadius = min(screenRect.width, screenRect.height) * clampedCornerRadiusRatio
         let screenPath = CGPath(
             roundedRect: screenRect,
             cornerWidth: screenCornerRadius,
@@ -496,7 +502,7 @@ enum CompositionService {
         context.saveGState()
         context.addPath(screenPath)
         context.clip()
-        drawImageFilling(screenshot, in: screenRect, context: context)
+        drawImageFitting(screenshot, in: screenRect, context: context)
         context.restoreGState()
 
         context.saveGState()
@@ -622,6 +628,24 @@ enum CompositionService {
         let imageSize = image.size
         guard imageSize.width > 0, imageSize.height > 0 else { return }
         let scale = max(rect.width / imageSize.width, rect.height / imageSize.height)
+        let drawSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let drawOrigin = CGPoint(
+            x: rect.midX - drawSize.width / 2,
+            y: rect.midY - drawSize.height / 2
+        )
+        image.draw(in: CGRect(origin: drawOrigin, size: drawSize))
+    }
+
+    /// Keeps every screenshot pixel visible when its aspect ratio differs from
+    /// the selected product bezel's screen aperture.
+    private static func drawImageFitting(_ image: NSImage, in rect: CGRect, context: CGContext) {
+        let imageSize = image.size
+        guard imageSize.width > 0, imageSize.height > 0 else { return }
+
+        context.setFillColor(NSColor.black.cgColor)
+        context.fill(rect)
+
+        let scale = min(rect.width / imageSize.width, rect.height / imageSize.height)
         let drawSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
         let drawOrigin = CGPoint(
             x: rect.midX - drawSize.width / 2,

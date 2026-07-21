@@ -13,6 +13,11 @@ struct MenuBarView: View {
     var body: some View {
         @Bindable var settings = app.settings
 
+        Button("Open Editor") {
+            app.presentPreviewWindow(repositionIfNeeded: false)
+        }
+        .keyboardShortcut("n", modifiers: [.command])
+
         Button {
             Task { await app.captureAndShowPreview() }
         } label: {
@@ -65,11 +70,6 @@ struct MenuBarView: View {
         Toggle("Watermark", isOn: $settings.watermarkEnabled)
 
         Divider()
-
-        Button("Open Preview Window") {
-            app.presentPreviewWindow()
-        }
-        .disabled(app.composedImage == nil && app.rawScreenshot == nil)
 
         Button("Refresh Simulators") {
             Task { await app.refreshDevices() }

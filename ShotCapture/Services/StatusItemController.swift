@@ -47,6 +47,15 @@ final class StatusItemController: NSObject {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
+        let openEditor = NSMenuItem(
+            title: "Open Editor",
+            action: #selector(openEditorClicked),
+            keyEquivalent: "n"
+        )
+        openEditor.keyEquivalentModifierMask = [.command]
+        openEditor.target = self
+        menu.addItem(openEditor)
+
         let capture = NSMenuItem(
             title: appController.isCapturing ? "Capturing…" : "Capture Simulator",
             action: #selector(captureClicked),
@@ -123,11 +132,6 @@ final class StatusItemController: NSObject {
 
         menu.addItem(.separator())
 
-        let preview = NSMenuItem(title: "Open Preview Window", action: #selector(openPreview), keyEquivalent: "")
-        preview.target = self
-        preview.isEnabled = appController.composedImage != nil || appController.rawScreenshot != nil
-        menu.addItem(preview)
-
         let refresh = NSMenuItem(title: "Refresh Simulators", action: #selector(refreshSimulators), keyEquivalent: "")
         refresh.target = self
         menu.addItem(refresh)
@@ -160,6 +164,10 @@ final class StatusItemController: NSObject {
     @objc private func statusItemClicked(_ sender: Any?) {
         // Menu is assigned to statusItem.menu, so AppKit opens it automatically.
         rebuildMenu()
+    }
+
+    @objc private func openEditorClicked() {
+        showPreviewWindow(reposition: false)
     }
 
     @objc private func captureClicked() {
@@ -195,10 +203,6 @@ final class StatusItemController: NSObject {
         appController.settings.watermarkEnabled.toggle()
         appController.recompose()
         rebuildMenu()
-    }
-
-    @objc private func openPreview() {
-        showPreviewWindow(reposition: false)
     }
 
     @objc private func refreshSimulators() {
@@ -241,7 +245,7 @@ final class StatusItemController: NSObject {
             .environment(appController)
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Capture Preview"
+        window.title = "ShotCapture Editor"
         window.identifier = NSUserInterfaceItemIdentifier("capture-preview")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.setContentSize(NSSize(width: 440, height: 760))
@@ -250,8 +254,9 @@ final class StatusItemController: NSObject {
         window.delegate = self
         previewWindow = window
 
-        // First open only — dock beside Simulator.
-        appController.positionCompanion(window)
+        if reposition {
+            appController.positionCompanion(window)
+        }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()

@@ -112,9 +112,9 @@ struct CapturePreviewView: View {
                     ProgressView("Capturing simulator…")
                 } else {
                     ContentUnavailableView {
-                        Label("Add an iPhone Screenshot", systemImage: "iphone.gen3")
+                        Label("Add an Image", systemImage: "photo.on.rectangle.angled")
                     } description: {
-                        Text("Capture a booted Simulator, import an image, or paste from the clipboard.")
+                        Text("Import any image, paste from the clipboard, or capture a booted Simulator.")
                     } actions: {
                         HStack {
                             Button("Import Image…") { app.importScreenshot() }
@@ -334,7 +334,7 @@ struct CapturePreviewView: View {
                             range: 0...2,
                             suffix: "×"
                         )
-                        .help("1× uses the selected iPhone's physical depth-to-width ratio")
+                        .help("1× uses the selected device's depth-to-width ratio")
                         Spacer()
                     }
                 }
@@ -377,18 +377,24 @@ struct CapturePreviewView: View {
 
             if settings.deviceFrameStyle == .appleProductBezel {
                 Picker("Device", selection: $settings.productBezelDevice) {
-                    ForEach(ProductBezelDevice.allCases) { device in
-                        Text(device.displayName).tag(device)
+                    ForEach(ProductBezelCategory.allCases) { category in
+                        if !category.devices.isEmpty {
+                            Section(category.rawValue) {
+                                ForEach(category.devices) { device in
+                                    Text(device.displayName).tag(device)
+                                }
+                            }
+                        }
                     }
                 }
-                .frame(maxWidth: 180)
+                .frame(maxWidth: 220)
 
-                Picker("Finish", selection: $settings.productBezelFinish) {
+                Picker(settings.productBezelDevice.variantLabel, selection: $settings.productBezelFinish) {
                     ForEach(settings.productBezelDevice.finishes, id: \.self) { finish in
                         Text(finish).tag(finish)
                     }
                 }
-                .frame(maxWidth: 180)
+                .frame(maxWidth: 240)
             } else if settings.deviceFrameStyle == .importedProductBezel {
                 Picker("Bezel", selection: Binding(
                     get: { app.selectedProductBezelID },

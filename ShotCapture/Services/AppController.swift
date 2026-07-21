@@ -52,7 +52,7 @@ final class AppController {
         guard xcodeAccess.hasAccess,
               let developerDirectory = xcodeAccess.developerDirectoryURL else {
             bootedDevices = []
-            statusMessage = "Choose Xcode in Settings"
+            statusMessage = "Editor ready · Choose Xcode for Simulator"
             return
         }
 
@@ -61,7 +61,7 @@ final class AppController {
                 developerDirectory: developerDirectory
             )
             if bootedDevices.isEmpty {
-                statusMessage = "No simulator booted"
+                statusMessage = "Editor ready · No simulator booted"
             } else if bootedDevices.count == 1 {
                 statusMessage = "Ready · \(bootedDevices[0].name)"
             } else {
@@ -143,6 +143,7 @@ final class AppController {
                 deviceFrameStyle: settings.deviceFrameStyle,
                 productBezel: activeProductBezelImage,
                 productBezelAperture: activeProductBezelAperture,
+                productBezelScreenCornerRadiusRatio: activeProductBezelScreenCornerRadiusRatio,
                 importedBezelInset: settings.importedBezelInset,
                 deviceDepthRatio: activeDeviceDepthRatio,
                 deviceEdgeTint: activeDeviceEdgeTint,
@@ -164,15 +165,10 @@ final class AppController {
         switch settings.deviceFrameStyle {
         case .appleProductBezel:
             guard let rawScreenshot else { return nil }
-            let resourceName = settings.productBezelDevice.resourceName(
+            let url = settings.productBezelDevice.resourceURL(
                 finish: settings.productBezelFinish,
                 isLandscape: rawScreenshot.size.width > rawScreenshot.size.height
             )
-            let url = Bundle.main.url(
-                forResource: resourceName,
-                withExtension: "png",
-                subdirectory: "ProductBezels"
-            ) ?? Bundle.main.url(forResource: resourceName, withExtension: "png")
             return url.flatMap(NSImage.init(contentsOf:))
         case .importedProductBezel:
             return selectedProductBezel?.image
@@ -194,6 +190,14 @@ final class AppController {
             settings.productBezelDevice.thicknessToWidthRatio
         } else {
             0.11
+        }
+    }
+
+    private var activeProductBezelScreenCornerRadiusRatio: Double {
+        if settings.deviceFrameStyle == .appleProductBezel {
+            settings.productBezelDevice.screenCornerRadiusRatio
+        } else {
+            0.105
         }
     }
 
@@ -377,7 +381,9 @@ final class AppController {
 
     private func existingPreviewWindow() -> NSWindow? {
         NSApplication.shared.windows.first(where: {
-            $0.title == "Capture Preview" || $0.identifier?.rawValue == "capture-preview"
+            $0.title == "ShotCapture Editor" ||
+                $0.title == "Capture Preview" ||
+                $0.identifier?.rawValue == "capture-preview"
         })
     }
 
@@ -395,7 +401,7 @@ final class AppController {
             .environment(self)
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Capture Preview"
+        window.title = "ShotCapture Editor"
         window.identifier = NSUserInterfaceItemIdentifier("capture-preview")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.setContentSize(NSSize(width: 780, height: 820))

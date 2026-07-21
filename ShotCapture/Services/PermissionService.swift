@@ -31,12 +31,13 @@ enum PermissionService {
 
     static var permissionSummary: String {
         """
-        ShotCapture requirements:
+        Simulator capture requirements:
 
         1. Select Xcode once so the App Sandbox can access simctl.
         2. A booted iOS Simulator.
         3. Accessibility — optional; only for the global keyboard shortcut.
 
+        The editor, image import, clipboard paste, and export work without Xcode or Simulator.
         Screenshots use xcrun simctl and do not require Screen Recording access.
         Xcode access is stored as a security-scoped bookmark.
         """
