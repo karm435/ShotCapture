@@ -7,7 +7,7 @@ import AppKit
 import CoreImage
 import Foundation
 
-struct CompositionRequest {
+nonisolated struct CompositionRequest: @unchecked Sendable {
     let screenshot: NSImage
     let platform: SocialPlatform
     let background: BackgroundStyle
@@ -75,9 +75,35 @@ struct CompositionRequest {
         self.titleFontSize = titleFontSize
         self.titleTransform = titleTransform
     }
+
+    func replacingScreenshot(_ screenshot: NSImage) -> CompositionRequest {
+        CompositionRequest(
+            screenshot: screenshot,
+            platform: platform,
+            background: background,
+            paddingPercent: paddingPercent,
+            deviceCornerRadius: deviceCornerRadius,
+            showDeviceShadow: showDeviceShadow,
+            watermarkEnabled: watermarkEnabled,
+            watermarkText: watermarkText,
+            screenshotTransform: screenshotTransform,
+            deviceFrameStyle: deviceFrameStyle,
+            productBezel: productBezel,
+            productBezelAperture: productBezelAperture,
+            productBezelScreenCornerRadiusRatio: productBezelScreenCornerRadiusRatio,
+            importedBezelInset: importedBezelInset,
+            deviceDepthRatio: deviceDepthRatio,
+            deviceEdgeTint: deviceEdgeTint,
+            titleEnabled: titleEnabled,
+            titleText: titleText,
+            titleFontName: titleFontName,
+            titleFontSize: titleFontSize,
+            titleTransform: titleTransform
+        )
+    }
 }
 
-enum CompositionService {
+nonisolated enum CompositionService {
     private static let coreImageContext = CIContext(options: [
         .cacheIntermediates: true
     ])

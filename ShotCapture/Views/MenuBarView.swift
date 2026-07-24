@@ -21,10 +21,27 @@ struct MenuBarView: View {
         Button {
             Task { await app.captureAndShowPreview() }
         } label: {
-            Text(app.isCapturing ? "Capturing…" : "Capture Simulator")
+            Text(app.isCapturing ? "Capturing…" : "Capture Simulator Still")
         }
         .keyboardShortcut("s", modifiers: [.command, .shift])
-        .disabled(app.isCapturing)
+        .disabled(
+            app.isCapturing ||
+                app.recordingState.isActive ||
+                app.videoExportState.isExporting
+        )
+
+        Button {
+            Task { await app.toggleSimulatorRecording() }
+        } label: {
+            Text(app.recordingState == .recording ? "Stop Simulator Recording" : "Record Simulator Video")
+        }
+        .keyboardShortcut("r", modifiers: [.command, .shift])
+        .disabled(
+            app.isCapturing ||
+                app.videoExportState.isExporting ||
+                app.recordingState == .starting ||
+                app.recordingState == .finalizing
+        )
 
         if app.bootedDevices.isEmpty {
             Text("No simulator booted")

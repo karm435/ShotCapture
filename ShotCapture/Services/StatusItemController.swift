@@ -57,14 +57,29 @@ final class StatusItemController: NSObject {
         menu.addItem(openEditor)
 
         let capture = NSMenuItem(
-            title: appController.isCapturing ? "Capturing…" : "Capture Simulator",
+            title: appController.isCapturing ? "Capturing…" : "Capture Simulator Still",
             action: #selector(captureClicked),
             keyEquivalent: "s"
         )
         capture.keyEquivalentModifierMask = [.command, .shift]
         capture.target = self
-        capture.isEnabled = !appController.isCapturing
+        capture.isEnabled = !appController.isCapturing &&
+            !appController.recordingState.isActive &&
+            !appController.videoExportState.isExporting
         menu.addItem(capture)
+
+        let record = NSMenuItem(
+            title: recordingMenuTitle,
+            action: #selector(recordClicked),
+            keyEquivalent: "r"
+        )
+        record.keyEquivalentModifierMask = [.command, .shift]
+        record.target = self
+        record.isEnabled = !appController.isCapturing &&
+            !appController.videoExportState.isExporting &&
+            appController.recordingState != .starting &&
+            appController.recordingState != .finalizing
+        menu.addItem(record)
 
         if appController.bootedDevices.isEmpty {
             let none = NSMenuItem(title: "No simulator booted", action: nil, keyEquivalent: "")
@@ -177,6 +192,13 @@ final class StatusItemController: NSObject {
         }
     }
 
+    @objc private func recordClicked() {
+        Task {
+            await appController.toggleSimulatorRecording()
+            rebuildMenu()
+        }
+    }
+
     @objc private func selectSimulator(_ sender: NSMenuItem) {
         let value = sender.representedObject as? String ?? ""
         appController.settings.preferredSimulatorUDID = value.isEmpty ? nil : value
@@ -260,6 +282,15 @@ final class StatusItemController: NSObject {
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
+    }
+
+    private var recordingMenuTitle: String {
+        switch appController.recordingState {
+        case .idle: "Record Simulator Video"
+        case .starting: "Starting Recording…"
+        case .recording: "Stop Simulator Recording"
+        case .finalizing: "Finalizing Recording…"
+        }
     }
 }
 

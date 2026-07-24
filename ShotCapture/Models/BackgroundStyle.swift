@@ -7,14 +7,14 @@ import AppKit
 import Foundation
 import SwiftUI
 
-enum BackgroundKind: String, Codable, Hashable {
+nonisolated enum BackgroundKind: String, Codable, Hashable, Sendable {
     case presetImage
     case solid
     case linearGradient
     case radialGradient
 }
 
-struct GradientStop: Codable, Hashable, Identifiable {
+nonisolated struct GradientStop: Codable, Hashable, Identifiable, Sendable {
     var id: UUID
     var location: Double
     var hex: String
@@ -34,7 +34,7 @@ struct GradientStop: Codable, Hashable, Identifiable {
     }
 }
 
-struct BackgroundStyle: Identifiable, Codable, Hashable {
+nonisolated struct BackgroundStyle: Identifiable, Codable, Hashable, Sendable {
     var id: UUID
     var name: String
     var kind: BackgroundKind
@@ -124,7 +124,7 @@ struct BackgroundStyle: Identifiable, Codable, Hashable {
 }
 
 extension NSColor {
-    convenience init?(hex: String) {
+    nonisolated convenience init?(hex: String) {
         var cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if cleaned.hasPrefix("#") { cleaned.removeFirst() }
         guard cleaned.count == 6 || cleaned.count == 8 else { return nil }
@@ -140,7 +140,7 @@ extension NSColor {
         self.init(srgbRed: r, green: g, blue: b, alpha: a)
     }
 
-    var hexString: String {
+    nonisolated var hexString: String {
         guard let rgb = usingColorSpace(.sRGB) else { return "#000000" }
         let r = Int(round(rgb.redComponent * 255))
         let g = Int(round(rgb.greenComponent * 255))

@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import AVFoundation
 import SwiftUI
 
 struct CapturePreviewView: View {
@@ -31,6 +32,14 @@ struct CapturePreviewView: View {
                 .frame(minHeight: 300)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            if app.isEditingVideo {
+                Divider()
+                VideoTransportControls()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.bar)
+            }
+
             Divider()
 
             controls
@@ -53,8 +62,9 @@ struct CapturePreviewView: View {
             Button {
                 app.importScreenshot()
             } label: {
-                Label("Import…", systemImage: "photo.badge.plus")
+                Label("Import…", systemImage: "plus.rectangle.on.rectangle")
             }
+            .disabled(app.isLoadingVideo || app.videoExportState.isExporting)
 
             Button {
                 app.pasteScreenshot()
@@ -62,13 +72,30 @@ struct CapturePreviewView: View {
                 Label("Paste", systemImage: "doc.on.clipboard")
             }
             .keyboardShortcut("v", modifiers: [.command])
+            .disabled(app.isLoadingVideo || app.videoExportState.isExporting)
+
+            Button {
+                Task { await app.toggleSimulatorRecording() }
+            } label: {
+                Label(recordingButtonTitle, systemImage: recordingButtonIcon)
+            }
+            .disabled(
+                app.isCapturing ||
+                    app.videoExportState.isExporting ||
+                    app.recordingState == .starting ||
+                    app.recordingState == .finalizing
+            )
 
             Button {
                 Task { await app.recaptureKeepingWindowPlace() }
             } label: {
-                Label("Recapture", systemImage: "arrow.clockwise")
+                Label("Capture Still", systemImage: "camera")
             }
-            .disabled(app.isCapturing)
+            .disabled(
+                app.isCapturing ||
+                    app.recordingState.isActive ||
+                    app.videoExportState.isExporting
+            )
 
             Button {
                 app.copyComposedToPasteboard()
@@ -81,10 +108,23 @@ struct CapturePreviewView: View {
             Button {
                 app.saveComposedImage()
             } label: {
-                Label("Save…", systemImage: "square.and.arrow.down")
+                Label(app.isEditingVideo ? "Export…" : "Save…", systemImage: "square.and.arrow.down")
             }
-            .disabled(app.composedImage == nil)
+            .disabled(
+                !app.hasEditableMedia ||
+                    app.videoExportState.isExporting ||
+                    app.recordingState.isActive
+            )
             .keyboardShortcut("s", modifiers: [.command])
+
+            if let progress = app.videoExportState.progress {
+                ProgressView(value: progress)
+                    .frame(width: 72)
+                    .accessibilityLabel("Video export progress")
+                Text("\(Int((progress * 100).rounded()))%")
+                    .font(.caption.monospacedDigit())
+                Button("Cancel", action: app.cancelVideoExport)
+            }
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 16)
@@ -99,7 +139,16 @@ struct CapturePreviewView: View {
                     .opacity(0.35)
                     .blur(radius: 24)
 
-                if let composed = app.composedImage {
+                if let player = app.videoPlayer, app.isEditingVideo {
+                    let displaySize = fittedSize(
+                        content: app.settings.selectedPlatform.canvasSize,
+                        available: CGSize(
+                            width: max(0, geometry.size.width - 32),
+                            height: max(0, geometry.size.height - 32)
+                        )
+                    )
+                    videoEditorCanvas(player: player, displaySize: displaySize)
+                } else if let composed = app.composedImage {
                     let displaySize = fittedSize(
                         content: composed.size,
                         available: CGSize(
@@ -108,17 +157,17 @@ struct CapturePreviewView: View {
                         )
                     )
                     editorCanvas(composed: composed, displaySize: displaySize)
-                } else if app.isCapturing {
-                    ProgressView("Capturing simulator…")
+                } else if app.isCapturing || app.isLoadingVideo || app.recordingState == .finalizing {
+                    ProgressView(app.isLoadingVideo ? "Loading video…" : "Capturing Simulator…")
                 } else {
                     ContentUnavailableView {
-                        Label("Add an Image", systemImage: "photo.on.rectangle.angled")
+                        Label("Add Media", systemImage: "photo.on.rectangle.angled")
                     } description: {
-                        Text("Import any image, paste from the clipboard, or capture a booted Simulator.")
+                        Text("Import an image or video, paste from the clipboard, or capture a booted Simulator.")
                     } actions: {
                         HStack {
-                            Button("Import Image…") { app.importScreenshot() }
-                            Button("Paste Image") { app.pasteScreenshot() }
+                            Button("Import…") { app.importScreenshot() }
+                            Button("Paste") { app.pasteScreenshot() }
                         }
                     }
                 }
@@ -152,6 +201,34 @@ struct CapturePreviewView: View {
         )
         .accessibilityLabel("Screenshot composition canvas")
         .accessibilityHint("Drag to move, pinch to resize, twist to rotate around Z, or pan with two fingers to tilt in 3D.")
+    }
+
+    private func videoEditorCanvas(player: AVPlayer, displaySize: CGSize) -> some View {
+        ZStack {
+            VideoPlayerCanvas(player: player)
+                .frame(width: displaySize.width, height: displaySize.height)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
+
+            if app.settings.titleEnabled, !app.settings.titleText.isEmpty {
+                titleHitTarget(
+                    displaySize: displaySize,
+                    canvasSize: app.settings.selectedPlatform.canvasSize
+                )
+            }
+        }
+        .frame(width: displaySize.width, height: displaySize.height)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedElement = .screenshot }
+        .gesture(screenshotDragGesture(displaySize: displaySize))
+        .simultaneousGesture(magnifyGesture)
+        .simultaneousGesture(rotationGesture)
+        .twoFingerTiltGesture(
+            isEnabled: selectedElement == .screenshot,
+            onDelta: applyTwoFingerTilt
+        )
+        .accessibilityLabel("Video composition canvas")
+        .accessibilityHint("Drag to move, pinch to resize, twist to rotate, or pan with two fingers to tilt in 3D.")
     }
 
     private func titleHitTarget(displaySize: CGSize, canvasSize: CGSize) -> some View {
@@ -527,6 +604,22 @@ struct CapturePreviewView: View {
         }
         let scale = min(available.width / content.width, available.height / content.height)
         return CGSize(width: content.width * scale, height: content.height * scale)
+    }
+
+    private var recordingButtonTitle: String {
+        switch app.recordingState {
+        case .idle: "Record Simulator"
+        case .starting: "Starting…"
+        case .recording: "Stop Recording"
+        case .finalizing: "Finalizing…"
+        }
+    }
+
+    private var recordingButtonIcon: String {
+        switch app.recordingState {
+        case .recording: "stop.circle.fill"
+        case .idle, .starting, .finalizing: "record.circle"
+        }
     }
 }
 

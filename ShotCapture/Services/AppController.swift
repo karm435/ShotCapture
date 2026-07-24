@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import AVFoundation
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
@@ -13,14 +14,26 @@ import UniformTypeIdentifiers
 final class AppController {
     let settings = AppSettings()
     let captureService = SimulatorCaptureService()
+    let recordingService = SimulatorRecordingService()
+    let videoImportService = VideoImportService()
+    let videoExportService = VideoExportService()
     let hotkeyService = HotkeyService()
     let xcodeAccess = XcodeAccessService()
 
     var bootedDevices: [SimulatorDevice] = []
     var isCapturing = false
+    var isLoadingVideo = false
     var lastError: String?
-    var rawScreenshot: NSImage?
+    var editorMedia: EditorMedia?
     var composedImage: NSImage?
+    var videoPlayer: AVPlayer?
+    var isVideoPlaying = false
+    var videoCurrentTime = 0.0
+    var videoDuration = 0.0
+    var videoTrimStart = 0.0
+    var videoTrimEnd = 0.0
+    var recordingState: SimulatorRecordingState = .idle
+    var videoExportState: VideoExportState = .idle
     var importedProductBezels: [ImportedProductBezel] = []
     var selectedProductBezelID: UUID?
     var statusMessage: String = "Ready"
@@ -29,6 +42,31 @@ final class AppController {
     var openPreviewWindowAction: (() -> Void)?
 
     private var fallbackPreviewWindow: NSWindow?
+    private var videoTimeObserver: Any?
+    private var securityScopedVideoURL: URL?
+    private var videoExportCancellationRequested = false
+
+    var rawScreenshot: NSImage? {
+        guard case .image(let image) = editorMedia else { return nil }
+        return image
+    }
+
+    var currentVideo: EditorVideo? {
+        guard case .video(let video) = editorMedia else { return nil }
+        return video
+    }
+
+    var hasEditableMedia: Bool {
+        editorMedia != nil
+    }
+
+    var isEditingVideo: Bool {
+        currentVideo != nil
+    }
+
+    var videoHasAudio: Bool {
+        currentVideo?.hasAudio == true
+    }
 
     init() {
         if settings.deviceFrameStyle == .importedProductBezel {
@@ -74,7 +112,9 @@ final class AppController {
     }
 
     func captureAndShowPreview() async {
-        guard !isCapturing else { return }
+        guard !isCapturing,
+              !recordingState.isActive,
+              !videoExportState.isExporting else { return }
         guard let developerDirectory = requireDeveloperDirectory() else { return }
         isCapturing = true
         lastError = nil
@@ -88,7 +128,7 @@ final class AppController {
                 udid: udid,
                 developerDirectory: developerDirectory
             )
-            rawScreenshot = image
+            replaceEditorMedia(with: .image(image))
             recompose()
             // Only dock beside Simulator the first time; keep user's placement after that.
             presentPreviewWindow(repositionIfNeeded: existingPreviewWindow() == nil)
@@ -102,7 +142,9 @@ final class AppController {
 
     /// Recapture for an already-open preview — never moves the window.
     func recaptureKeepingWindowPlace() async {
-        guard !isCapturing else { return }
+        guard !isCapturing,
+              !recordingState.isActive,
+              !videoExportState.isExporting else { return }
         guard let developerDirectory = requireDeveloperDirectory() else { return }
         isCapturing = true
         lastError = nil
@@ -116,7 +158,7 @@ final class AppController {
                 udid: udid,
                 developerDirectory: developerDirectory
             )
-            rawScreenshot = image
+            replaceEditorMedia(with: .image(image))
             recompose()
             presentPreviewWindow(repositionIfNeeded: false)
             statusMessage = "Captured"
@@ -127,32 +169,111 @@ final class AppController {
         }
     }
 
-    func recompose() {
-        guard let rawScreenshot else { return }
-        composedImage = CompositionService.compose(
-            CompositionRequest(
-                screenshot: rawScreenshot,
-                platform: settings.selectedPlatform,
-                background: settings.selectedBackground,
-                paddingPercent: settings.paddingPercent,
-                deviceCornerRadius: settings.deviceCornerRadius,
-                showDeviceShadow: settings.showDeviceShadow,
-                watermarkEnabled: settings.watermarkEnabled,
-                watermarkText: settings.watermarkText,
-                screenshotTransform: settings.screenshotTransform,
-                deviceFrameStyle: settings.deviceFrameStyle,
-                productBezel: activeProductBezelImage,
-                productBezelAperture: activeProductBezelAperture,
-                productBezelScreenCornerRadiusRatio: activeProductBezelScreenCornerRadiusRatio,
-                importedBezelInset: settings.importedBezelInset,
-                deviceDepthRatio: activeDeviceDepthRatio,
-                deviceEdgeTint: activeDeviceEdgeTint,
-                titleEnabled: settings.titleEnabled,
-                titleText: settings.titleText,
-                titleFontName: settings.titleFontName,
-                titleFontSize: settings.titleFontSize,
-                titleTransform: settings.titleTransform
+    func toggleSimulatorRecording() async {
+        if recordingState == .recording {
+            await stopSimulatorRecording()
+        } else if recordingState == .idle {
+            await startSimulatorRecording()
+        }
+    }
+
+    func startSimulatorRecording() async {
+        guard recordingState == .idle,
+              !isCapturing,
+              !videoExportState.isExporting else { return }
+        guard let developerDirectory = requireDeveloperDirectory() else { return }
+        recordingState = .starting
+        lastError = nil
+        statusMessage = "Starting recording…"
+
+        do {
+            await refreshDevices()
+            guard let udid = resolvedUDID() else {
+                throw SimulatorCaptureError.noBootedSimulator
+            }
+            _ = try await recordingService.startRecording(
+                udid: udid,
+                developerDirectory: developerDirectory
             )
+            recordingState = .recording
+            statusMessage = "Recording Simulator"
+        } catch {
+            recordingState = .idle
+            lastError = error.localizedDescription
+            statusMessage = "Recording failed"
+            NSSound.beep()
+        }
+    }
+
+    func stopSimulatorRecording() async {
+        guard recordingState == .recording else { return }
+        recordingState = .finalizing
+        statusMessage = "Finalizing recording…"
+
+        do {
+            let url = try await recordingService.stopRecording()
+            recordingState = .idle
+            await useVideo(at: url, deletesFileWhenReplaced: true)
+        } catch {
+            recordingState = .idle
+            lastError = error.localizedDescription
+            statusMessage = "Recording failed"
+            NSSound.beep()
+        }
+    }
+
+    func cancelSimulatorRecording() {
+        guard recordingState.isActive else { return }
+        Task { await recordingService.cancelRecording() }
+        recordingState = .idle
+        statusMessage = "Recording cancelled"
+    }
+
+    func recompose() {
+        switch editorMedia {
+        case .image(let image):
+            composedImage = CompositionService.compose(compositionRequest(for: image))
+        case .video(let video):
+            composedImage = nil
+            guard let item = videoPlayer?.currentItem else { return }
+            item.videoComposition = makeVideoComposition(for: video)
+            item.seekingWaitsForVideoCompositionRendering = true
+        case nil:
+            composedImage = nil
+        }
+    }
+
+    private func compositionRequest(for sourceImage: NSImage) -> CompositionRequest {
+        CompositionRequest(
+            screenshot: sourceImage,
+            platform: settings.selectedPlatform,
+            background: settings.selectedBackground,
+            paddingPercent: settings.paddingPercent,
+            deviceCornerRadius: settings.deviceCornerRadius,
+            showDeviceShadow: settings.showDeviceShadow,
+            watermarkEnabled: settings.watermarkEnabled,
+            watermarkText: settings.watermarkText,
+            screenshotTransform: settings.screenshotTransform,
+            deviceFrameStyle: settings.deviceFrameStyle,
+            productBezel: activeProductBezelImage,
+            productBezelAperture: activeProductBezelAperture,
+            productBezelScreenCornerRadiusRatio: activeProductBezelScreenCornerRadiusRatio,
+            importedBezelInset: settings.importedBezelInset,
+            deviceDepthRatio: activeDeviceDepthRatio,
+            deviceEdgeTint: activeDeviceEdgeTint,
+            titleEnabled: settings.titleEnabled,
+            titleText: settings.titleText,
+            titleFontName: settings.titleFontName,
+            titleFontSize: settings.titleFontSize,
+            titleTransform: settings.titleTransform
+        )
+    }
+
+    private func makeVideoComposition(for video: EditorVideo) -> AVVideoComposition {
+        let placeholder = NSImage(size: video.displaySize)
+        return VideoCompositionService.makeComposition(
+            for: video,
+            request: compositionRequest(for: placeholder)
         )
     }
 
@@ -164,10 +285,10 @@ final class AppController {
     private var activeProductBezelImage: NSImage? {
         switch settings.deviceFrameStyle {
         case .appleProductBezel:
-            guard let rawScreenshot else { return nil }
+            guard let size = activeMediaSize else { return nil }
             let url = settings.productBezelDevice.resourceURL(
                 finish: settings.productBezelFinish,
-                isLandscape: rawScreenshot.size.width > rawScreenshot.size.height
+                isLandscape: size.width > size.height
             )
             return url.flatMap(NSImage.init(contentsOf:))
         case .importedProductBezel:
@@ -179,10 +300,18 @@ final class AppController {
 
     private var activeProductBezelAperture: CGRect? {
         guard settings.deviceFrameStyle == .appleProductBezel,
-              let rawScreenshot else { return nil }
+              let size = activeMediaSize else { return nil }
         return settings.productBezelDevice.screenAperture(
-            isLandscape: rawScreenshot.size.width > rawScreenshot.size.height
+            isLandscape: size.width > size.height
         )
+    }
+
+    private var activeMediaSize: CGSize? {
+        switch editorMedia {
+        case .image(let image): image.size
+        case .video(let video): video.displaySize
+        case nil: nil
+        }
     }
 
     private var activeDeviceDepthRatio: Double {
@@ -210,9 +339,17 @@ final class AppController {
     }
 
     func pasteScreenshot() {
-        guard let image = NSImage(pasteboard: .general) else {
-            lastError = "The clipboard does not contain an image."
-            statusMessage = "No image on clipboard"
+        let pasteboard = NSPasteboard.general
+        if let fileURLString = pasteboard.string(forType: .fileURL),
+           let fileURL = URL(string: fileURLString),
+           isVideoFile(fileURL) {
+            Task { await useVideo(at: fileURL, deletesFileWhenReplaced: false) }
+            return
+        }
+
+        guard let image = NSImage(pasteboard: pasteboard) else {
+            lastError = "The clipboard does not contain an image or video file."
+            statusMessage = "No media on clipboard"
             NSSound.beep()
             return
         }
@@ -221,15 +358,18 @@ final class AppController {
 
     func importScreenshot() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = [.image, .movie]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.message = "Choose an iPhone screenshot or another image to compose."
+        panel.message = "Choose an image or video to compose."
 
         guard panel.runModal() == .OK,
-              let url = panel.url,
-              let image = NSImage(contentsOf: url) else { return }
-        useScreenshot(image, status: "Imported \(url.lastPathComponent)")
+              let url = panel.url else { return }
+        if isVideoFile(url) {
+            Task { await useVideo(at: url, deletesFileWhenReplaced: false) }
+        } else if let image = NSImage(contentsOf: url) {
+            useScreenshot(image, status: "Imported \(url.lastPathComponent)")
+        }
     }
 
     func importProductBezels() {
@@ -272,11 +412,148 @@ final class AppController {
     }
 
     private func useScreenshot(_ image: NSImage, status: String) {
-        rawScreenshot = image
+        replaceEditorMedia(with: .image(image))
         settings.screenshotTransform = .screenshotDefault
         recompose()
         presentPreviewWindow(repositionIfNeeded: false)
         statusMessage = status
+    }
+
+    private func useVideo(
+        at url: URL,
+        deletesFileWhenReplaced: Bool
+    ) async {
+        guard !videoExportState.isExporting else { return }
+        isLoadingVideo = true
+        lastError = nil
+        statusMessage = "Loading video…"
+        let gainedSecurityScope = !deletesFileWhenReplaced && url.startAccessingSecurityScopedResource()
+        defer { isLoadingVideo = false }
+
+        do {
+            let video = try await videoImportService.loadVideo(
+                at: url,
+                deletesFileWhenReplaced: deletesFileWhenReplaced
+            )
+            replaceEditorMedia(with: .video(video))
+            securityScopedVideoURL = gainedSecurityScope ? url : nil
+            videoDuration = video.durationSeconds
+            videoTrimStart = 0
+            videoTrimEnd = video.durationSeconds
+            videoCurrentTime = 0
+            settings.screenshotTransform = .screenshotDefault
+            configurePlayer(for: video)
+            recompose()
+            presentPreviewWindow(repositionIfNeeded: false)
+            statusMessage = "Loaded \(video.displayName)"
+        } catch {
+            if gainedSecurityScope {
+                url.stopAccessingSecurityScopedResource()
+            }
+            if deletesFileWhenReplaced {
+                try? FileManager.default.removeItem(at: url)
+            }
+            lastError = error.localizedDescription
+            statusMessage = "Video import failed"
+            NSSound.beep()
+        }
+    }
+
+    private func isVideoFile(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.contentTypeKey])
+        return values?.contentType?.conforms(to: .movie) == true
+    }
+
+    private func replaceEditorMedia(with media: EditorMedia) {
+        pauseVideo()
+        removeVideoTimeObserver()
+        if let securityScopedVideoURL {
+            securityScopedVideoURL.stopAccessingSecurityScopedResource()
+            self.securityScopedVideoURL = nil
+        }
+        if let currentVideo, currentVideo.deletesFileWhenReplaced {
+            try? FileManager.default.removeItem(at: currentVideo.url)
+        }
+        videoPlayer = nil
+        editorMedia = media
+    }
+
+    private func configurePlayer(for video: EditorVideo) {
+        let item = AVPlayerItem(asset: AVURLAsset(url: video.url))
+        let player = AVPlayer(playerItem: item)
+        videoPlayer = player
+        installVideoTimeObserver(on: player)
+    }
+
+    func toggleVideoPlayback() {
+        guard let player = videoPlayer else { return }
+        if isVideoPlaying {
+            pauseVideo()
+            return
+        }
+        if videoCurrentTime >= videoTrimEnd - 0.02 {
+            seekVideo(to: videoTrimStart)
+        }
+        player.play()
+        isVideoPlaying = true
+    }
+
+    func pauseVideo() {
+        videoPlayer?.pause()
+        isVideoPlaying = false
+    }
+
+    func seekVideo(to seconds: Double) {
+        guard let player = videoPlayer else { return }
+        let target = min(max(seconds, videoTrimStart), videoTrimEnd)
+        videoCurrentTime = target
+        player.seek(
+            to: CMTime(seconds: target, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        )
+    }
+
+    func normalizeVideoTrim() {
+        guard videoDuration > 0 else { return }
+        let minimumDuration = min(0.05, videoDuration)
+        let start = min(max(videoTrimStart, 0), max(0, videoDuration - minimumDuration))
+        let end = min(max(videoTrimEnd, start + minimumDuration), videoDuration)
+        if videoTrimStart != start { videoTrimStart = start }
+        if videoTrimEnd != end { videoTrimEnd = end }
+        if videoCurrentTime < start || videoCurrentTime > end {
+            seekVideo(to: start)
+        }
+    }
+
+    private func installVideoTimeObserver(on player: AVPlayer) {
+        removeVideoTimeObserver()
+        videoTimeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            Task { @MainActor in
+                guard let self else { return }
+                let seconds = time.seconds
+                guard seconds.isFinite else { return }
+                if seconds >= self.videoTrimEnd - 0.01, self.isVideoPlaying {
+                    self.pauseVideo()
+                    self.videoCurrentTime = self.videoTrimEnd
+                } else {
+                    self.videoCurrentTime = min(
+                        max(seconds, self.videoTrimStart),
+                        self.videoTrimEnd
+                    )
+                }
+            }
+        }
+    }
+
+    private func removeVideoTimeObserver() {
+        if let videoTimeObserver, let videoPlayer {
+            videoPlayer.removeTimeObserver(videoTimeObserver)
+        }
+        videoTimeObserver = nil
     }
 
     func presentPreviewWindow(repositionIfNeeded: Bool = true) {
@@ -316,12 +593,16 @@ final class AppController {
     }
 
     func saveComposedImage() {
+        if isEditingVideo {
+            saveComposedVideo()
+            return
+        }
         guard let composedImage,
               let data = CompositionService.pngData(from: composedImage) else { return }
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = defaultFileName()
+        panel.nameFieldStringValue = defaultFileName(extension: "png")
         panel.canCreateDirectories = true
 
         if panel.runModal() == .OK, let url = panel.url {
@@ -334,12 +615,98 @@ final class AppController {
         }
     }
 
+    private func saveComposedVideo() {
+        guard currentVideo != nil,
+              !videoExportState.isExporting,
+              recordingState == .idle else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.nameFieldStringValue = defaultFileName(extension: "mp4")
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { await exportVideo(to: url, revealWhenFinished: true) }
+    }
+
+    private func exportVideo(to url: URL, revealWhenFinished: Bool) async {
+        guard let video = currentVideo else { return }
+        pauseVideo()
+        videoExportCancellationRequested = false
+        videoExportState = .exporting(progress: 0)
+        lastError = nil
+        statusMessage = "Exporting video…"
+
+        let start = CMTime(seconds: videoTrimStart, preferredTimescale: 600)
+        let end = CMTime(seconds: videoTrimEnd, preferredTimescale: 600)
+        let range = CMTimeRange(start: start, end: end)
+        let composition = makeVideoComposition(for: video)
+
+        do {
+            try await videoExportService.export(
+                video: video,
+                composition: composition,
+                trimRange: range,
+                to: url
+            ) { [weak self] progress in
+                self?.videoExportState = .exporting(progress: progress)
+                self?.statusMessage = "Exporting \(Int((progress * 100).rounded()))%"
+            }
+            videoExportState = .idle
+            statusMessage = "Saved video"
+            if revealWhenFinished {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        } catch {
+            if videoExportCancellationRequested || error is CancellationError {
+                videoExportState = .idle
+                statusMessage = "Export cancelled"
+            } else {
+                videoExportState = .failed(message: error.localizedDescription)
+                lastError = error.localizedDescription
+                statusMessage = "Export failed"
+                NSSound.beep()
+            }
+        }
+        videoExportCancellationRequested = false
+    }
+
+    func cancelVideoExport() {
+        videoExportCancellationRequested = true
+        videoExportService.cancel()
+        statusMessage = "Cancelling export…"
+    }
+
+    func shutdown() {
+        pauseVideo()
+        removeVideoTimeObserver()
+        videoExportService.cancel()
+        if recordingState.isActive {
+            Task { await recordingService.cancelRecording() }
+        }
+        if let securityScopedVideoURL {
+            securityScopedVideoURL.stopAccessingSecurityScopedResource()
+            self.securityScopedVideoURL = nil
+        }
+        if let currentVideo, currentVideo.deletesFileWhenReplaced {
+            try? FileManager.default.removeItem(at: currentVideo.url)
+        }
+    }
+
     func saveToDownloads() {
+        if isEditingVideo {
+            guard !videoExportState.isExporting,
+                  recordingState == .idle else { return }
+            let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
+            let url = downloads.appendingPathComponent(defaultFileName(extension: "mp4"))
+            Task { await exportVideo(to: url, revealWhenFinished: true) }
+            return
+        }
         guard let composedImage,
               let data = CompositionService.pngData(from: composedImage) else { return }
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
-        let url = downloads.appendingPathComponent(defaultFileName())
+        let url = downloads.appendingPathComponent(defaultFileName(extension: "png"))
         do {
             try data.write(to: url)
             NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -414,11 +781,11 @@ final class AppController {
         NSApp.activate()
     }
 
-    private func defaultFileName() -> String {
+    private func defaultFileName(extension fileExtension: String) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         let platform = settings.selectedPlatform.rawValue
-        return "ShotCapture-\(platform)-\(formatter.string(from: Date())).png"
+        return "ShotCapture-\(platform)-\(formatter.string(from: Date())).\(fileExtension)"
     }
 }
 

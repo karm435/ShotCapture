@@ -6,7 +6,7 @@
 import AppKit
 import Foundation
 
-struct CanvasElementTransform: Codable, Equatable, Sendable {
+nonisolated struct CanvasElementTransform: Codable, Equatable, Sendable {
     /// Horizontal offset from the canvas center as a fraction of canvas width.
     var offsetX: Double
 
@@ -81,7 +81,7 @@ struct CanvasElementTransform: Codable, Equatable, Sendable {
     )
 }
 
-enum DeviceFrameStyle: String, CaseIterable, Codable, Identifiable, Sendable {
+nonisolated enum DeviceFrameStyle: String, CaseIterable, Codable, Identifiable, Sendable {
     case none
     case genericPhone
     case appleProductBezel
@@ -89,6 +89,7 @@ enum DeviceFrameStyle: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    @MainActor
     static var availableCases: [DeviceFrameStyle] {
         allCases.filter { style in
             style != .appleProductBezel || ProductBezelDevice.bundledResourcesAvailable

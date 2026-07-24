@@ -8,7 +8,7 @@ import CoreGraphics
 
 /// Social feed canvas sizes chosen so the framed screenshot displays fully
 /// without platform crop. Specs follow 2026 platform guidance.
-enum SocialPlatform: String, CaseIterable, Identifiable, Codable, Hashable {
+nonisolated enum SocialPlatform: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
     case xFeed
     case linkedInFeed
     case linkedInSquare
