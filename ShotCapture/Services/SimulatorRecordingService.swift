@@ -23,10 +23,7 @@ actor SimulatorRecordingService {
     private var stopContinuation: CheckedContinuation<URL, Error>?
     private var completedResult: Result<URL, Error>?
 
-    func startRecording(
-        udid: String,
-        developerDirectory: URL
-    ) async throws -> URL {
+    func startRecording(udid: String) async throws -> URL {
         guard activeSession == nil else {
             throw SimulatorRecordingError.alreadyRecording
         }
@@ -47,9 +44,6 @@ actor SimulatorRecordingService {
             "--force",
             outputURL.path(),
         ]
-        var environment = ProcessInfo.processInfo.environment
-        environment["DEVELOPER_DIR"] = developerDirectory.path(percentEncoded: false)
-        session.process.environment = environment
         session.process.standardError = session.errorPipe
 
         session.errorPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in

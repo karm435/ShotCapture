@@ -27,18 +27,20 @@ Menu bar macOS app that captures stills or video from a booted iOS Simulator, im
 
 | Setting | Value |
 |---------|--------|
-| **Distribution** | Mac App Store or direct Developer ID distribution |
-| **App Sandbox** | Enabled; the user selects Xcode to grant scoped access |
+| **Distribution** | Local source builds or direct Developer ID distribution |
+| **App Sandbox** | Disabled because Simulator capture invokes `simctl` |
 | **Category** | `public.app-category.developer-tools` |
 | **Capture method** | `xcrun simctl io <UDID> screenshot` or `recordVideo` |
 
-This configuration follows the sandboxed Xcode-access pattern used by Simulator companion tools on the Mac App Store.
+ShotCapture uses the active Xcode command-line tools selected on the Mac. App
+Sandbox is incompatible with the CoreSimulator services used by `simctl`, so
+Mac App Store distribution is not supported by this capture architecture.
 
 ## Requirements
 
 | Need | Why | Required? |
 |------|-----|-----------|
-| **Selected Xcode application** | Grants sandboxed access to `simctl` | Simulator still or video capture only |
+| **Xcode command-line tools** | Provides `xcrun simctl` | Simulator still or video capture only |
 | **Booted Simulator** | Simulator media source | Simulator still or video capture only |
 | **Accessibility** | Global hotkey only | Optional |
 | **Downloads / Save panel** | Export framed PNGs or MP4 videos | Yes |
@@ -47,7 +49,7 @@ This configuration follows the sandboxed Xcode-access pattern used by Simulator 
 
 1. Launch ShotCapture and choose **Open Editor** from the menu bar item.
 2. Use **Import** or **Paste** to prepare an image or video without Xcode or a running Simulator.
-3. For Simulator capture, choose the installed Xcode application, boot an iOS Simulator, then choose **Capture Simulator Still** or **Record Simulator Video**.
+3. For Simulator capture, boot an iOS Simulator, then choose **Capture Simulator Still** or **Record Simulator Video**.
 4. Select **Screenshot** or **Title**, then drag on the canvas. On a Mac trackpad, pinch to scale, twist two fingers to rotate around Z, or pan two fingers to control Tilt X/Y. The sliders provide precise values, and 1× Depth follows the selected iPhone's physical proportions.
 5. For video, use the playback and trim controls below the canvas.
 6. Copy or save a composed PNG, or export video as MP4.

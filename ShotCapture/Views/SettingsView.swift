@@ -39,28 +39,9 @@ struct SettingsView: View {
                     }
 
                     Section("Simulator") {
-                        LabeledContent("Xcode access") {
-                            Text(app.xcodeAccess.hasAccess ? "Granted" : "Not selected")
-                                .foregroundStyle(app.xcodeAccess.hasAccess ? .green : .orange)
-                        }
-
-                        Text(app.xcodeAccess.displayPath)
+                        Text("Uses the active Xcode command-line tools selected on this Mac.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .textSelection(.enabled)
-
-                        Button(app.xcodeAccess.hasAccess ? "Choose Different Xcode…" : "Choose Xcode…") {
-                            if app.xcodeAccess.chooseXcode() {
-                                Task { await app.refreshDevices() }
-                            }
-                        }
-
-                        if let error = app.xcodeAccess.lastError {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
 
                         if app.bootedDevices.isEmpty {
                             Text("No booted simulators")

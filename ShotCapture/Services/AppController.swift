@@ -18,7 +18,6 @@ final class AppController {
     let videoImportService = VideoImportService()
     let videoExportService = VideoExportService()
     let hotkeyService = HotkeyService()
-    let xcodeAccess = XcodeAccessService()
 
     var bootedDevices: [SimulatorDevice] = []
     var isCapturing = false
@@ -87,17 +86,8 @@ final class AppController {
     }
 
     func refreshDevices() async {
-        guard xcodeAccess.hasAccess,
-              let developerDirectory = xcodeAccess.developerDirectoryURL else {
-            bootedDevices = []
-            statusMessage = "Editor ready · Choose Xcode for Simulator"
-            return
-        }
-
         do {
-            bootedDevices = try await captureService.listBootedDevices(
-                developerDirectory: developerDirectory
-            )
+            bootedDevices = try await captureService.listBootedDevices()
             if bootedDevices.isEmpty {
                 statusMessage = "Editor ready · No simulator booted"
             } else if bootedDevices.count == 1 {
@@ -115,7 +105,6 @@ final class AppController {
         guard !isCapturing,
               !recordingState.isActive,
               !videoExportState.isExporting else { return }
-        guard let developerDirectory = requireDeveloperDirectory() else { return }
         isCapturing = true
         lastError = nil
         statusMessage = "Capturing…"
@@ -124,10 +113,7 @@ final class AppController {
         do {
             await refreshDevices()
             let udid = resolvedUDID()
-            let image = try await captureService.captureScreenshot(
-                udid: udid,
-                developerDirectory: developerDirectory
-            )
+            let image = try await captureService.captureScreenshot(udid: udid)
             replaceEditorMedia(with: .image(image))
             recompose()
             // Only dock beside Simulator the first time; keep user's placement after that.
@@ -145,7 +131,6 @@ final class AppController {
         guard !isCapturing,
               !recordingState.isActive,
               !videoExportState.isExporting else { return }
-        guard let developerDirectory = requireDeveloperDirectory() else { return }
         isCapturing = true
         lastError = nil
         statusMessage = "Capturing…"
@@ -154,10 +139,7 @@ final class AppController {
         do {
             await refreshDevices()
             let udid = resolvedUDID()
-            let image = try await captureService.captureScreenshot(
-                udid: udid,
-                developerDirectory: developerDirectory
-            )
+            let image = try await captureService.captureScreenshot(udid: udid)
             replaceEditorMedia(with: .image(image))
             recompose()
             presentPreviewWindow(repositionIfNeeded: false)
@@ -181,7 +163,6 @@ final class AppController {
         guard recordingState == .idle,
               !isCapturing,
               !videoExportState.isExporting else { return }
-        guard let developerDirectory = requireDeveloperDirectory() else { return }
         recordingState = .starting
         lastError = nil
         statusMessage = "Starting recording…"
@@ -191,10 +172,7 @@ final class AppController {
             guard let udid = resolvedUDID() else {
                 throw SimulatorCaptureError.noBootedSimulator
             }
-            _ = try await recordingService.startRecording(
-                udid: udid,
-                developerDirectory: developerDirectory
-            )
+            _ = try await recordingService.startRecording(udid: udid)
             recordingState = .recording
             statusMessage = "Recording Simulator"
         } catch {
@@ -729,21 +707,6 @@ final class AppController {
             return preferred
         }
         return bootedDevices.first?.udid
-    }
-
-    private func requireDeveloperDirectory() -> URL? {
-        if xcodeAccess.hasAccess,
-           let developerDirectory = xcodeAccess.developerDirectoryURL {
-            return developerDirectory
-        }
-
-        guard xcodeAccess.chooseXcode(),
-              let developerDirectory = xcodeAccess.developerDirectoryURL else {
-            lastError = xcodeAccess.lastError ?? "Choose Xcode before capturing a Simulator screenshot."
-            statusMessage = "Xcode access required"
-            return nil
-        }
-        return developerDirectory
     }
 
     private func existingPreviewWindow() -> NSWindow? {

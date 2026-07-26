@@ -33,14 +33,13 @@ enum PermissionService {
         """
         Simulator capture requirements:
 
-        1. Select Xcode once so the App Sandbox can access simctl.
+        1. Xcode and its command-line tools.
         2. A booted iOS Simulator.
         3. Accessibility — optional; only for the global keyboard shortcut.
 
         The editor, media import, clipboard paste, and export work without Xcode or Simulator.
         Simulator stills and video use xcrun simctl and do not require Screen Recording access.
         Simulator video is silent; imported video audio is preserved.
-        Xcode access is stored as a security-scoped bookmark.
         """
     }
 }
