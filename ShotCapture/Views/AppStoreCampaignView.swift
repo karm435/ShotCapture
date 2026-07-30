@@ -243,61 +243,7 @@ struct AppStoreCampaignView: View {
     }
 
     private var screenshotCanvas: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Label(
-                    controller.selectedTarget.displayName,
-                    systemImage: controller.selectedTarget.isIPad ? "ipad" : "iphone"
-                )
-                .font(.subheadline.weight(.semibold))
-                Spacer()
-                Button(action: controller.importScreenshot) {
-                    Label("Import", systemImage: "photo.badge.plus")
-                }
-                Button(action: controller.captureScreenshot) {
-                    Label("Capture Simulator", systemImage: "camera")
-                }
-                .disabled(controller.isWorking)
-            }
-            .buttonStyle(.borderless)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.bar)
-
-            GeometryReader { geometry in
-                ZStack {
-                    Color(nsColor: .underPageBackgroundColor)
-
-                    if let image = controller.renderedScreenshot {
-                        let size = fittedSize(
-                            content: image.size,
-                            available: CGSize(
-                                width: max(0, geometry.size.width - 64),
-                                height: max(0, geometry.size.height - 64)
-                            )
-                        )
-                        Image(nsImage: image)
-                            .resizable()
-                            .frame(width: size.width, height: size.height)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
-                            .accessibilityLabel("Rendered App Store screenshot")
-                    } else {
-                        ContentUnavailableView {
-                            Label("Add a Simulator Screenshot", systemImage: "iphone.gen3")
-                        } description: {
-                            Text("Import an image or capture a booted Simulator for this target.")
-                        } actions: {
-                            HStack {
-                                Button("Import…", action: controller.importScreenshot)
-                                Button("Capture Simulator", action: controller.captureScreenshot)
-                            }
-                        }
-                    }
-                }
-                .frame(width: geometry.size.width, height: geometry.size.height)
-            }
-        }
+        CampaignScreenshotCanvasView()
     }
 
     private var screenshotInspector: some View {
@@ -482,40 +428,28 @@ struct AppStoreCampaignView: View {
     }
 
     private var placementSection: some View {
-        GroupBox("Placement") {
-            VStack(spacing: 10) {
-                inspectorSlider(
-                    "Scale",
-                    value: screenshotTransformBinding(\.scale),
-                    range: 0.25...1.6
-                )
-                inspectorSlider(
-                    "Horizontal",
-                    value: screenshotTransformBinding(\.offsetX),
-                    range: -0.6...0.6
-                )
-                inspectorSlider(
-                    "Vertical",
-                    value: screenshotTransformBinding(\.offsetY),
-                    range: -0.6...0.6
-                )
-                inspectorSlider(
-                    "Rotation",
-                    value: screenshotTransformBinding(\.rotationDegrees),
-                    range: -30...30
-                )
-                inspectorSlider(
-                    "Tilt X",
-                    value: screenshotTransformBinding(\.tiltXDegrees),
-                    range: -25...25
-                )
-                inspectorSlider(
-                    "Tilt Y",
-                    value: screenshotTransformBinding(\.tiltYDegrees),
-                    range: -25...25
+        Group {
+            if let panelID = controller.selectedPanelID,
+               let transform = controller.selectedContent?.screenshotTransform {
+                let target = controller.selectedTarget
+                CampaignPlacementControlsView(
+                    transform: transform,
+                    onPreview: { newTransform in
+                        controller.previewScreenshotTransform(
+                            newTransform,
+                            panelID: panelID,
+                            target: target
+                        )
+                    },
+                    onCommit: { newTransform in
+                        controller.commitScreenshotTransform(
+                            newTransform,
+                            panelID: panelID,
+                            target: target
+                        )
+                    }
                 )
             }
-            .padding(.top, 4)
         }
     }
 
@@ -917,21 +851,6 @@ struct AppStoreCampaignView: View {
         )
     }
 
-    private func screenshotTransformBinding(
-        _ keyPath: WritableKeyPath<CanvasElementTransform, Double>
-    ) -> Binding<Double> {
-        Binding(
-            get: {
-                controller.selectedContent!.screenshotTransform[keyPath: keyPath]
-            },
-            set: { value in
-                controller.updateSelectedContent {
-                    $0.screenshotTransform[keyPath: keyPath] = value
-                }
-            }
-        )
-    }
-
     private func previewBinding<Value>(
         _ keyPath: WritableKeyPath<AppStorePreviewItem, Value>
     ) -> Binding<Value> {
@@ -973,11 +892,6 @@ struct AppStoreCampaignView: View {
         }
     }
 
-    private func fittedSize(content: CGSize, available: CGSize) -> CGSize {
-        guard content.width > 0, content.height > 0 else { return .zero }
-        let scale = min(available.width / content.width, available.height / content.height)
-        return CGSize(width: content.width * scale, height: content.height * scale)
-    }
 }
 
 private struct CampaignVideoPlayerView: View {

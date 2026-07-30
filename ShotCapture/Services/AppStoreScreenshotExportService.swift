@@ -47,6 +47,12 @@ nonisolated enum AppStoreScreenshotExportError: LocalizedError {
 @MainActor
 final class AppStoreScreenshotExportService {
     private let fileManager = FileManager.default
+    private let imageCache = NSCache<NSURL, NSImage>()
+
+    init() {
+        imageCache.countLimit = 24
+        imageCache.totalCostLimit = 256 * 1_024 * 1_024
+    }
 
     func preflight(
         campaign: AppStoreCampaign,
@@ -103,7 +109,7 @@ final class AppStoreScreenshotExportService {
                 let mediaURL = packageURL
                     .appending(path: "Assets", directoryHint: .isDirectory)
                     .appending(path: mediaFileName)
-                guard let image = NSImage(contentsOf: mediaURL) else {
+                guard let image = cachedImage(at: mediaURL) else {
                     issues.append(AppStorePreflightIssue(
                         severity: .error,
                         message: "“\(panel.name)” references an unreadable image for \(target.shortName).",
@@ -166,6 +172,91 @@ final class AppStoreScreenshotExportService {
         target: AppStoreDisplayTarget,
         packageURL: URL
     ) throws -> NSImage {
+        try render(
+            panel: panel,
+            target: target,
+            packageURL: packageURL,
+            canvasSize: target.screenshotSize,
+            contentScale: 1
+        )
+    }
+
+    func renderPreview(
+        panel: AppStoreScreenshotPanel,
+        target: AppStoreDisplayTarget,
+        packageURL: URL,
+        maximumDimension: CGFloat
+    ) throws -> NSImage {
+        let exportSize = target.screenshotSize
+        let longestEdge = max(exportSize.width, exportSize.height)
+        let contentScale = min(1, maximumDimension / longestEdge)
+        return try render(
+            panel: panel,
+            target: target,
+            packageURL: packageURL,
+            canvasSize: CGSize(
+                width: (exportSize.width * contentScale).rounded(),
+                height: (exportSize.height * contentScale).rounded()
+            ),
+            contentScale: contentScale
+        )
+    }
+
+    func renderPreviewLayers(
+        panel: AppStoreScreenshotPanel,
+        target: AppStoreDisplayTarget,
+        packageURL: URL,
+        maximumDimension: CGFloat
+    ) throws -> AppStoreScreenshotPreviewLayers {
+        let exportSize = target.screenshotSize
+        let longestEdge = max(exportSize.width, exportSize.height)
+        let contentScale = min(1, maximumDimension / longestEdge)
+        let canvasSize = CGSize(
+            width: (exportSize.width * contentScale).rounded(),
+            height: (exportSize.height * contentScale).rounded()
+        )
+        let request = try compositionRequest(
+            panel: panel,
+            target: target,
+            packageURL: packageURL,
+            canvasSize: canvasSize,
+            contentScale: contentScale
+        )
+        guard let device = CompositionService.untransformedDeviceLayer(request) else {
+            throw AppStoreScreenshotExportError.renderingFailed
+        }
+        return AppStoreScreenshotPreviewLayers(
+            backdrop: CompositionService.composeBackdrop(request),
+            device: device,
+            canvasSize: canvasSize,
+            showsDeviceShadow: request.showDeviceShadow
+        )
+    }
+
+    private func render(
+        panel: AppStoreScreenshotPanel,
+        target: AppStoreDisplayTarget,
+        packageURL: URL,
+        canvasSize: CGSize,
+        contentScale: CGFloat
+    ) throws -> NSImage {
+        let request = try compositionRequest(
+            panel: panel,
+            target: target,
+            packageURL: packageURL,
+            canvasSize: canvasSize,
+            contentScale: contentScale
+        )
+        return CompositionService.compose(request)
+    }
+
+    private func compositionRequest(
+        panel: AppStoreScreenshotPanel,
+        target: AppStoreDisplayTarget,
+        packageURL: URL,
+        canvasSize: CGSize,
+        contentScale: CGFloat
+    ) throws -> CompositionRequest {
         guard let content = panel.targetContents.first(where: { $0.target == target }),
               let mediaFileName = content.mediaFileName else {
             throw AppStoreScreenshotExportError.missingMedia(panel.name, target)
@@ -173,7 +264,7 @@ final class AppStoreScreenshotExportService {
         let mediaURL = packageURL
             .appending(path: "Assets", directoryHint: .isDirectory)
             .appending(path: mediaFileName)
-        guard let source = NSImage(contentsOf: mediaURL) else {
+        guard let source = cachedImage(at: mediaURL) else {
             throw AppStoreScreenshotExportError.unreadableMedia(mediaFileName)
         }
 
@@ -181,7 +272,7 @@ final class AppStoreScreenshotExportService {
             finish: content.productBezelFinish,
             isLandscape: target.isLandscape
         )
-        let bezel = bezelURL.flatMap(NSImage.init(contentsOf:))
+        let bezel = bezelURL.flatMap(cachedImage(at:))
         let requestedStyle: DeviceFrameStyle
         if content.deviceFrameStyle == .appleProductBezel, bezel == nil {
             requestedStyle = .genericPhone
@@ -191,7 +282,7 @@ final class AppStoreScreenshotExportService {
 
         let request = CompositionRequest(
             screenshot: source,
-            canvasSize: target.screenshotSize,
+            canvasSize: canvasSize,
             background: panel.background,
             paddingPercent: content.paddingPercent,
             deviceCornerRadius: content.deviceCornerRadius,
@@ -212,19 +303,33 @@ final class AppStoreScreenshotExportService {
             titleEnabled: !panel.headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             titleText: panel.headline,
             titleFontName: panel.titleFontName,
-            titleFontSize: panel.titleFontSize,
+            titleFontSize: panel.titleFontSize * contentScale,
             titleTransform: panel.titleTransform,
             titleColor: NSColor(hex: panel.titleColorHex) ?? .white,
             titleMaxWidthPercent: panel.layout == .editorial ? 0.56 : 0.88,
             subtitleEnabled: !panel.subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             subtitleText: panel.subtitle,
             subtitleFontName: panel.subtitleFontName,
-            subtitleFontSize: panel.subtitleFontSize,
+            subtitleFontSize: panel.subtitleFontSize * contentScale,
             subtitleTransform: panel.subtitleTransform,
             subtitleColor: NSColor(hex: panel.subtitleColorHex) ?? .white,
             subtitleMaxWidthPercent: panel.layout == .editorial ? 0.54 : 0.82
         )
-        return CompositionService.compose(request)
+        return request
+    }
+
+    private func cachedImage(at url: URL) -> NSImage? {
+        let key = url.standardizedFileURL as NSURL
+        if let cached = imageCache.object(forKey: key) {
+            return cached
+        }
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        let estimatedCost = max(
+            1,
+            Int(image.size.width * image.size.height * 4)
+        )
+        imageCache.setObject(image, forKey: key, cost: estimatedCost)
+        return image
     }
 
     func export(

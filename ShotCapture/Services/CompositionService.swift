@@ -204,6 +204,43 @@ nonisolated struct CompositionRequest: @unchecked Sendable {
             subtitleMaxWidthPercent: subtitleMaxWidthPercent
         )
     }
+
+    func replacingScreenshotTransform(
+        _ screenshotTransform: CanvasElementTransform
+    ) -> CompositionRequest {
+        CompositionRequest(
+            screenshot: screenshot,
+            canvasSize: canvasSize,
+            background: background,
+            paddingPercent: paddingPercent,
+            deviceCornerRadius: deviceCornerRadius,
+            showDeviceShadow: showDeviceShadow,
+            watermarkEnabled: watermarkEnabled,
+            watermarkText: watermarkText,
+            screenshotTransform: screenshotTransform,
+            deviceFrameStyle: deviceFrameStyle,
+            productBezel: productBezel,
+            productBezelAperture: productBezelAperture,
+            productBezelScreenCornerRadiusRatio: productBezelScreenCornerRadiusRatio,
+            importedBezelInset: importedBezelInset,
+            deviceDepthRatio: deviceDepthRatio,
+            deviceEdgeTint: deviceEdgeTint,
+            titleEnabled: titleEnabled,
+            titleText: titleText,
+            titleFontName: titleFontName,
+            titleFontSize: titleFontSize,
+            titleTransform: titleTransform,
+            titleColor: titleColor,
+            titleMaxWidthPercent: titleMaxWidthPercent,
+            subtitleEnabled: subtitleEnabled,
+            subtitleText: subtitleText,
+            subtitleFontName: subtitleFontName,
+            subtitleFontSize: subtitleFontSize,
+            subtitleTransform: subtitleTransform,
+            subtitleColor: subtitleColor,
+            subtitleMaxWidthPercent: subtitleMaxWidthPercent
+        )
+    }
 }
 
 nonisolated enum CompositionService {
@@ -212,6 +249,32 @@ nonisolated enum CompositionService {
     ])
 
     static func compose(_ request: CompositionRequest) -> NSImage {
+        compose(request, includesScreenshot: true)
+    }
+
+    static func composeBackdrop(_ request: CompositionRequest) -> NSImage {
+        compose(request, includesScreenshot: false)
+    }
+
+    static func untransformedDeviceLayer(
+        _ request: CompositionRequest
+    ) -> NSImage? {
+        let padding = min(request.canvasSize.width, request.canvasSize.height)
+            * CGFloat(request.paddingPercent)
+        let maxSize = CGSize(
+            width: request.canvasSize.width - (padding * 2),
+            height: request.canvasSize.height - (padding * 2)
+        )
+        return makeDeviceLayer(
+            request.replacingScreenshotTransform(.screenshotDefault),
+            maxSize: maxSize
+        )
+    }
+
+    private static func compose(
+        _ request: CompositionRequest,
+        includesScreenshot: Bool
+    ) -> NSImage {
         let canvas = request.canvasSize
         let width = Int(canvas.width)
         let height = Int(canvas.height)
@@ -224,7 +287,9 @@ nonisolated enum CompositionService {
 
         drawBackground(request.background, in: context, size: canvas)
 
-        drawScreenshot(request, in: context, canvas: canvas)
+        if includesScreenshot {
+            drawScreenshot(request, in: context, canvas: canvas)
+        }
 
         if request.titleEnabled, !request.titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             drawText(

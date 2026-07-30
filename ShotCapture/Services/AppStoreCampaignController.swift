@@ -50,6 +50,9 @@ final class AppStoreCampaignController {
     var selectedTarget: AppStoreDisplayTarget = .iPhone69Portrait
     var selectedSection: AppStoreWorkspaceSection = .screenshots
     var renderedScreenshot: NSImage?
+    var screenshotPreviewLayers: AppStoreScreenshotPreviewLayers?
+    var interactiveScreenshotTransform: CanvasElementTransform?
+    var isAdjustingScreenshotPlacement = false
     var preflightIssues: [AppStorePreflightIssue] = []
     var statusMessage = "Preparing campaign…"
     var lastError: String?
@@ -255,6 +258,41 @@ final class AppStoreCampaignController {
         updateSelectedPanel { panel in
             panel.updateContent(for: selectedTarget, update)
         }
+    }
+
+    func previewScreenshotTransform(
+        _ transform: CanvasElementTransform,
+        panelID: UUID,
+        target: AppStoreDisplayTarget
+    ) {
+        guard selectedPanelID == panelID, selectedTarget == target else { return }
+        interactiveScreenshotTransform = transform
+        isAdjustingScreenshotPlacement = true
+    }
+
+    func commitScreenshotTransform(
+        _ transform: CanvasElementTransform,
+        panelID: UUID,
+        target: AppStoreDisplayTarget
+    ) {
+        guard let index = campaign.panels.firstIndex(where: { $0.id == panelID }) else {
+            return
+        }
+        campaign.panels[index].updateContent(for: target) {
+            $0.screenshotTransform = transform
+        }
+        campaign.updatedAt = .now
+        if selectedPanelID == panelID, selectedTarget == target, let workspaceURL {
+            renderedScreenshot = try? screenshotExporter.renderPreview(
+                panel: campaign.panels[index],
+                target: target,
+                packageURL: workspaceURL,
+                maximumDimension: 1_400
+            )
+            interactiveScreenshotTransform = nil
+            isAdjustingScreenshotPlacement = false
+        }
+        saveCampaign()
     }
 
     func addPanel() {
@@ -626,13 +664,25 @@ final class AppStoreCampaignController {
     private func refreshRenderedScreenshot() {
         guard let panel = selectedPanel, let workspaceURL else {
             renderedScreenshot = nil
+            screenshotPreviewLayers = nil
+            interactiveScreenshotTransform = nil
+            isAdjustingScreenshotPlacement = false
             return
         }
-        renderedScreenshot = try? screenshotExporter.render(
+        renderedScreenshot = try? screenshotExporter.renderPreview(
             panel: panel,
             target: selectedTarget,
-            packageURL: workspaceURL
+            packageURL: workspaceURL,
+            maximumDimension: 1_400
         )
+        screenshotPreviewLayers = try? screenshotExporter.renderPreviewLayers(
+            panel: panel,
+            target: selectedTarget,
+            packageURL: workspaceURL,
+            maximumDimension: 1_400
+        )
+        interactiveScreenshotTransform = nil
+        isAdjustingScreenshotPlacement = false
     }
 
     private func refreshPreflight() {
