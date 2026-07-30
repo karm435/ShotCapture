@@ -10,11 +10,14 @@ import SwiftUI
 @MainActor
 final class StatusItemController: NSObject {
     private let appController: AppController
+    private let campaignController: AppStoreCampaignController
     private var statusItem: NSStatusItem?
     private var previewWindow: NSWindow?
+    private var campaignWindow: NSWindow?
 
     init(appController: AppController) {
         self.appController = appController
+        self.campaignController = AppStoreCampaignController(appController: appController)
         super.init()
     }
 
@@ -47,8 +50,17 @@ final class StatusItemController: NSObject {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
+        let openCampaign = NSMenuItem(
+            title: "App Store Campaigns",
+            action: #selector(openCampaignClicked),
+            keyEquivalent: "n"
+        )
+        openCampaign.keyEquivalentModifierMask = [.command, .shift]
+        openCampaign.target = self
+        menu.addItem(openCampaign)
+
         let openEditor = NSMenuItem(
-            title: "Open Editor",
+            title: "Quick Editor",
             action: #selector(openEditorClicked),
             keyEquivalent: "n"
         )
@@ -176,6 +188,10 @@ final class StatusItemController: NSObject {
 
     // MARK: - Actions
 
+    @objc private func openCampaignClicked() {
+        showCampaignWindow()
+    }
+
     @objc private func statusItemClicked(_ sender: Any?) {
         // Menu is assigned to statusItem.menu, so AppKit opens it automatically.
         rebuildMenu()
@@ -279,6 +295,33 @@ final class StatusItemController: NSObject {
         if reposition {
             appController.positionCompanion(window)
         }
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    func showCampaignWindow() {
+        if let campaignWindow {
+            NSApp.activate()
+            campaignWindow.makeKeyAndOrderFront(nil)
+            campaignWindow.orderFrontRegardless()
+            return
+        }
+
+        let root = AppStoreCampaignView()
+            .environment(campaignController)
+        let hosting = NSHostingController(rootView: root)
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "ShotCapture · App Store Campaigns"
+        window.identifier = NSUserInterfaceItemIdentifier("app-store-campaign")
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.setContentSize(NSSize(width: 1_320, height: 860))
+        window.minSize = NSSize(width: 1_080, height: 720)
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        campaignWindow = window
+
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()

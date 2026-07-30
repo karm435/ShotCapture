@@ -6,7 +6,7 @@
 import AppKit
 import Foundation
 
-enum ProductBezelCategory: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum ProductBezelCategory: String, CaseIterable, Identifiable, Sendable {
     case iPhone = "iPhone"
     case iPad = "iPad"
     case mac = "Mac & Displays"
@@ -20,7 +20,7 @@ enum ProductBezelCategory: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-enum ProductBezelDevice: String, CaseIterable, Codable, Identifiable, Sendable {
+nonisolated enum ProductBezelDevice: String, CaseIterable, Codable, Identifiable, Sendable {
     case iPhone17 = "iPhone 17"
     case iPhoneAir = "iPhone Air"
     case iPhone17Pro = "iPhone 17 Pro"

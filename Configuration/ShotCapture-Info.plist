@@ -2,7 +2,42 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>ShotCapture Campaign</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.karmaacademy.shotcapture.campaign</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>ShotCapture needs Accessibility permission to listen for your global screenshot keyboard shortcut.</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.apple.package</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>ShotCapture Campaign</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.karmaacademy.shotcapture.campaign</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>shotcapturecampaign</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

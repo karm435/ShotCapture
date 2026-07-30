@@ -13,7 +13,7 @@ nonisolated enum VideoCompositionService {
     ) -> AVVideoComposition {
         let composition = AVMutableVideoComposition()
         composition.customVideoCompositorClass = ShotVideoCompositor.self
-        composition.renderSize = request.platform.canvasSize
+        composition.renderSize = request.canvasSize
         composition.frameDuration = CMTime(
             value: 1,
             timescale: outputFrameRate(for: video)

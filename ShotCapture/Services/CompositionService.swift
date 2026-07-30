@@ -6,10 +6,11 @@
 import AppKit
 import CoreImage
 import Foundation
+import ImageIO
 
 nonisolated struct CompositionRequest: @unchecked Sendable {
     let screenshot: NSImage
-    let platform: SocialPlatform
+    let canvasSize: CGSize
     let background: BackgroundStyle
     let paddingPercent: Double
     let deviceCornerRadius: Double
@@ -27,8 +28,81 @@ nonisolated struct CompositionRequest: @unchecked Sendable {
     let titleFontName: String
     let titleFontSize: Double
     let titleTransform: CanvasElementTransform
+    let titleColor: NSColor
+    let titleMaxWidthPercent: Double
+    let subtitleEnabled: Bool
+    let subtitleText: String
+    let subtitleFontName: String
+    let subtitleFontSize: Double
+    let subtitleTransform: CanvasElementTransform
+    let subtitleColor: NSColor
+    let subtitleMaxWidthPercent: Double
     let watermarkEnabled: Bool
     let watermarkText: String
+
+    init(
+        screenshot: NSImage,
+        canvasSize: CGSize,
+        background: BackgroundStyle,
+        paddingPercent: Double,
+        deviceCornerRadius: Double,
+        showDeviceShadow: Bool,
+        watermarkEnabled: Bool,
+        watermarkText: String,
+        screenshotTransform: CanvasElementTransform = .screenshotDefault,
+        deviceFrameStyle: DeviceFrameStyle = .genericPhone,
+        productBezel: NSImage? = nil,
+        productBezelAperture: CGRect? = nil,
+        productBezelScreenCornerRadiusRatio: Double = 0.105,
+        importedBezelInset: Double = 0.055,
+        deviceDepthRatio: Double = 0.11,
+        deviceEdgeTint: NSColor = NSColor(calibratedWhite: 0.16, alpha: 1),
+        titleEnabled: Bool = false,
+        titleText: String = "",
+        titleFontName: String = NSFont.systemFont(ofSize: 72, weight: .bold).fontName,
+        titleFontSize: Double = 72,
+        titleTransform: CanvasElementTransform = .titleDefault,
+        titleColor: NSColor = .white,
+        titleMaxWidthPercent: Double = 0.88,
+        subtitleEnabled: Bool = false,
+        subtitleText: String = "",
+        subtitleFontName: String = NSFont.systemFont(ofSize: 36, weight: .medium).fontName,
+        subtitleFontSize: Double = 36,
+        subtitleTransform: CanvasElementTransform = .titleDefault,
+        subtitleColor: NSColor = .white,
+        subtitleMaxWidthPercent: Double = 0.82
+    ) {
+        self.screenshot = screenshot
+        self.canvasSize = canvasSize
+        self.background = background
+        self.paddingPercent = paddingPercent
+        self.deviceCornerRadius = deviceCornerRadius
+        self.showDeviceShadow = showDeviceShadow
+        self.watermarkEnabled = watermarkEnabled
+        self.watermarkText = watermarkText
+        self.screenshotTransform = screenshotTransform
+        self.deviceFrameStyle = deviceFrameStyle
+        self.productBezel = productBezel
+        self.productBezelAperture = productBezelAperture
+        self.productBezelScreenCornerRadiusRatio = productBezelScreenCornerRadiusRatio
+        self.importedBezelInset = importedBezelInset
+        self.deviceDepthRatio = deviceDepthRatio
+        self.deviceEdgeTint = deviceEdgeTint
+        self.titleEnabled = titleEnabled
+        self.titleText = titleText
+        self.titleFontName = titleFontName
+        self.titleFontSize = titleFontSize
+        self.titleTransform = titleTransform
+        self.titleColor = titleColor
+        self.titleMaxWidthPercent = titleMaxWidthPercent
+        self.subtitleEnabled = subtitleEnabled
+        self.subtitleText = subtitleText
+        self.subtitleFontName = subtitleFontName
+        self.subtitleFontSize = subtitleFontSize
+        self.subtitleTransform = subtitleTransform
+        self.subtitleColor = subtitleColor
+        self.subtitleMaxWidthPercent = subtitleMaxWidthPercent
+    }
 
     init(
         screenshot: NSImage,
@@ -51,35 +125,20 @@ nonisolated struct CompositionRequest: @unchecked Sendable {
         titleText: String = "",
         titleFontName: String = NSFont.systemFont(ofSize: 72, weight: .bold).fontName,
         titleFontSize: Double = 72,
-        titleTransform: CanvasElementTransform = .titleDefault
+        titleTransform: CanvasElementTransform = .titleDefault,
+        titleColor: NSColor = .white,
+        titleMaxWidthPercent: Double = 0.88,
+        subtitleEnabled: Bool = false,
+        subtitleText: String = "",
+        subtitleFontName: String = NSFont.systemFont(ofSize: 36, weight: .medium).fontName,
+        subtitleFontSize: Double = 36,
+        subtitleTransform: CanvasElementTransform = .titleDefault,
+        subtitleColor: NSColor = .white,
+        subtitleMaxWidthPercent: Double = 0.82
     ) {
-        self.screenshot = screenshot
-        self.platform = platform
-        self.background = background
-        self.paddingPercent = paddingPercent
-        self.deviceCornerRadius = deviceCornerRadius
-        self.showDeviceShadow = showDeviceShadow
-        self.watermarkEnabled = watermarkEnabled
-        self.watermarkText = watermarkText
-        self.screenshotTransform = screenshotTransform
-        self.deviceFrameStyle = deviceFrameStyle
-        self.productBezel = productBezel
-        self.productBezelAperture = productBezelAperture
-        self.productBezelScreenCornerRadiusRatio = productBezelScreenCornerRadiusRatio
-        self.importedBezelInset = importedBezelInset
-        self.deviceDepthRatio = deviceDepthRatio
-        self.deviceEdgeTint = deviceEdgeTint
-        self.titleEnabled = titleEnabled
-        self.titleText = titleText
-        self.titleFontName = titleFontName
-        self.titleFontSize = titleFontSize
-        self.titleTransform = titleTransform
-    }
-
-    func replacingScreenshot(_ screenshot: NSImage) -> CompositionRequest {
-        CompositionRequest(
+        self.init(
             screenshot: screenshot,
-            platform: platform,
+            canvasSize: platform.canvasSize,
             background: background,
             paddingPercent: paddingPercent,
             deviceCornerRadius: deviceCornerRadius,
@@ -98,7 +157,51 @@ nonisolated struct CompositionRequest: @unchecked Sendable {
             titleText: titleText,
             titleFontName: titleFontName,
             titleFontSize: titleFontSize,
-            titleTransform: titleTransform
+            titleTransform: titleTransform,
+            titleColor: titleColor,
+            titleMaxWidthPercent: titleMaxWidthPercent,
+            subtitleEnabled: subtitleEnabled,
+            subtitleText: subtitleText,
+            subtitleFontName: subtitleFontName,
+            subtitleFontSize: subtitleFontSize,
+            subtitleTransform: subtitleTransform,
+            subtitleColor: subtitleColor,
+            subtitleMaxWidthPercent: subtitleMaxWidthPercent
+        )
+    }
+
+    func replacingScreenshot(_ screenshot: NSImage) -> CompositionRequest {
+        CompositionRequest(
+            screenshot: screenshot,
+            canvasSize: canvasSize,
+            background: background,
+            paddingPercent: paddingPercent,
+            deviceCornerRadius: deviceCornerRadius,
+            showDeviceShadow: showDeviceShadow,
+            watermarkEnabled: watermarkEnabled,
+            watermarkText: watermarkText,
+            screenshotTransform: screenshotTransform,
+            deviceFrameStyle: deviceFrameStyle,
+            productBezel: productBezel,
+            productBezelAperture: productBezelAperture,
+            productBezelScreenCornerRadiusRatio: productBezelScreenCornerRadiusRatio,
+            importedBezelInset: importedBezelInset,
+            deviceDepthRatio: deviceDepthRatio,
+            deviceEdgeTint: deviceEdgeTint,
+            titleEnabled: titleEnabled,
+            titleText: titleText,
+            titleFontName: titleFontName,
+            titleFontSize: titleFontSize,
+            titleTransform: titleTransform,
+            titleColor: titleColor,
+            titleMaxWidthPercent: titleMaxWidthPercent,
+            subtitleEnabled: subtitleEnabled,
+            subtitleText: subtitleText,
+            subtitleFontName: subtitleFontName,
+            subtitleFontSize: subtitleFontSize,
+            subtitleTransform: subtitleTransform,
+            subtitleColor: subtitleColor,
+            subtitleMaxWidthPercent: subtitleMaxWidthPercent
         )
     }
 }
@@ -109,7 +212,7 @@ nonisolated enum CompositionService {
     ])
 
     static func compose(_ request: CompositionRequest) -> NSImage {
-        let canvas = request.platform.canvasSize
+        let canvas = request.canvasSize
         let width = Int(canvas.width)
         let height = Int(canvas.height)
 
@@ -124,7 +227,32 @@ nonisolated enum CompositionService {
         drawScreenshot(request, in: context, canvas: canvas)
 
         if request.titleEnabled, !request.titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            drawTitle(request, in: context, canvas: canvas)
+            drawText(
+                request.titleText,
+                fontName: request.titleFontName,
+                fontSize: request.titleFontSize,
+                color: request.titleColor,
+                maxWidthPercent: request.titleMaxWidthPercent,
+                transform: request.titleTransform,
+                weight: .bold,
+                in: context,
+                canvas: canvas
+            )
+        }
+
+        if request.subtitleEnabled,
+           !request.subtitleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            drawText(
+                request.subtitleText,
+                fontName: request.subtitleFontName,
+                fontSize: request.subtitleFontSize,
+                color: request.subtitleColor,
+                maxWidthPercent: request.subtitleMaxWidthPercent,
+                transform: request.subtitleTransform,
+                weight: .medium,
+                in: context,
+                canvas: canvas
+            )
         }
 
         if request.watermarkEnabled {
@@ -556,32 +684,38 @@ nonisolated enum CompositionService {
         context.restoreGState()
     }
 
-    private static func drawTitle(
-        _ request: CompositionRequest,
+    private static func drawText(
+        _ text: String,
+        fontName: String,
+        fontSize: Double,
+        color: NSColor,
+        maxWidthPercent: Double,
+        transform: CanvasElementTransform,
+        weight: NSFont.Weight,
         in context: CGContext,
         canvas: CGSize
     ) {
-        let transform = request.titleTransform
-        let fontSize = CGFloat(request.titleFontSize * transform.scale)
-        let font = NSFont(name: request.titleFontName, size: fontSize)
-            ?? NSFont.systemFont(ofSize: fontSize, weight: .bold)
+        let resolvedFontSize = CGFloat(fontSize * transform.scale)
+        let font = NSFont(name: fontName, size: resolvedFontSize)
+            ?? NSFont.systemFont(ofSize: resolvedFontSize, weight: weight)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.white,
+            .foregroundColor: color,
             .paragraphStyle: paragraph,
             .shadow: {
                 let shadow = NSShadow()
                 shadow.shadowColor = NSColor.black.withAlphaComponent(0.42)
-                shadow.shadowBlurRadius = max(2, fontSize * 0.08)
+                shadow.shadowBlurRadius = max(2, resolvedFontSize * 0.08)
                 shadow.shadowOffset = CGSize(width: 0, height: -2)
                 return shadow
             }()
         ]
-        let attributed = NSAttributedString(string: request.titleText, attributes: attributes)
+        let attributed = NSAttributedString(string: text, attributes: attributes)
+        let clampedWidth = min(max(maxWidthPercent, 0.2), 0.96)
         let measured = attributed.boundingRect(
-            with: CGSize(width: canvas.width * 0.88, height: canvas.height),
+            with: CGSize(width: canvas.width * clampedWidth, height: canvas.height),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         ).integral.size
         let center = CGPoint(
@@ -605,6 +739,57 @@ nonisolated enum CompositionService {
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .png, properties: [:])
+    }
+
+    /// App Store screenshots must not contain an alpha channel. Redrawing into
+    /// a three-channel RGB bitmap makes that property explicit and verifiable.
+    static func opaquePNGData(from image: NSImage, pixelSize: CGSize) -> Data? {
+        let width = Int(pixelSize.width.rounded())
+        let height = Int(pixelSize.height.rounded())
+        guard width > 0,
+              height > 0,
+              let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+              ) else {
+            return nil
+        }
+
+        var proposedRect = NSRect(origin: .zero, size: image.size)
+        guard let sourceImage = image.cgImage(
+            forProposedRect: &proposedRect,
+            context: nil,
+            hints: nil
+        ) else {
+            return nil
+        }
+        context.setFillColor(NSColor.white.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.interpolationQuality = .high
+        context.draw(
+            sourceImage,
+            in: CGRect(x: 0, y: 0, width: width, height: height)
+        )
+
+        guard let outputImage = context.makeImage() else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            "public.png" as CFString,
+            1,
+            nil
+        ) else {
+            return nil
+        }
+        CGImageDestinationAddImage(destination, outputImage, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
     }
 
     // MARK: - Background

@@ -46,6 +46,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             await appController.refreshDevices()
             status.rebuildMenu()
+            // ShotCapture now has a document-style primary workspace. Showing it
+            // on launch also gives users a visible recovery path if macOS hides
+            // or crowds the status item.
+            status.showCampaignWindow()
         }
     }
 
